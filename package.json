@@ -1,0 +1,205 @@
+{
+  "name": "dotjs-file-templates",
+  "publisher": "ebceu4",
+  "displayName": "doT.js Templates",
+  "description": "doT.js based file templates for vscode",
+  "version": "0.0.1",
+  "main": "./build/extension.js",
+  "scripts": {
+    "dev": "rm -rf build && webpack --mode development --watch",
+    "build": "rm -rf build && webpack --mode production",
+    "build:dev": "rm -rf build && webpack --mode development",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "test": "node ./node_modules/vscode/bin/test",
+    "test:compile": "tsc && rm -rf build",
+    "lint": "eslint ./src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ebceu4/vscode-dot-templates.git"
+  },
+  "engines": {
+    "vscode": "^1.33.1"
+  },
+  "categories": [
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "dot",
+    "dotjs",
+    "doT",
+    "dot.js",
+    "doT.js",
+    "templates",
+    "code generator"
+  ],
+  "badges": [],
+  "icon": "assets/logo.png",
+  "activationEvents": [
+    "*"
+  ],
+  "resolutions": {
+    "**/event-stream": "^4.0.1"
+  },
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Code Templates configuration",
+      "properties": {
+        "templates.showExplorer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show or hide the Explorer."
+        },
+        "templates.customVars": {
+          "type": "object",
+          "default": {},
+          "description": "Custom template variables."
+        }
+      }
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "templates.showDialog",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "templates.create",
+          "when": "view == fileExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "templates.create",
+          "when": "view == templatesExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "templates.refresh",
+          "when": "view == templatesExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "templates.create",
+          "when": "view == templatesExplorer"
+        },
+        {
+          "command": "templates.rename",
+          "when": "view == templatesExplorer",
+          "group": "inline@1"
+        },
+        {
+          "command": "templates.clone",
+          "when": "view == templatesExplorer",
+          "group": "inline@2"
+        },
+        {
+          "command": "templates.delete",
+          "when": "view == templatesExplorer",
+          "group": "inline@3"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "templates.showDialog",
+        "title": "New File From Template...",
+        "description": "Displays template dialog",
+        "category": "Templates"
+      },
+      {
+        "command": "templates.create",
+        "title": "Create",
+        "description": "Creates new template",
+        "category": "Templates",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "templates.clone",
+        "title": "Clone",
+        "description": "Clone template",
+        "category": "Templates",
+        "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "templates.edit",
+        "title": "Edit",
+        "description": "Edit template",
+        "category": "Templates"
+      },
+      {
+        "command": "templates.rename",
+        "title": "Rename",
+        "description": "Rename template",
+        "category": "Templates",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "templates.delete",
+        "title": "Delete",
+        "description": "Delete template",
+        "category": "Templates",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "templates.refresh",
+        "title": "Refresh",
+        "description": "Refreshes templates list",
+        "category": "Templates",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "templatesView",
+          "title": "Code Templates",
+          "icon": "$(file)"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "templatesExplorer",
+          "name": "Templates",
+          "when": "config.templates.showExplorer == true"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "templates.showDialog",
+        "key": "Ctrl+Alt+N",
+        "mac": "Cmd+Alt+N"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/dot": "^1.1.3",
+    "@types/mkdirp": "^0.5.2",
+    "@types/mocha": "^5.2.6",
+    "@types/node": "^12.0.0",
+    "@types/webpack": "^4.41.7",
+    "@typescript-eslint/eslint-plugin": "2.19.2",
+    "@typescript-eslint/parser": "2.19.2",
+    "eslint": "^6.6.0",
+    "jest": "^24.9.0",
+    "ts-jest": "^24.1.0",
+    "ts-loader": "^6.2.1",
+    "typescript": "3.7.5",
+    "vscode": "^1.1.36",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.10"
+  },
+  "dependencies": {
+    "dot": "^1.1.2",
+    "mkdirp": "^0.5.1",
+    "readdirp": "^3.3.0"
+  }
+}
