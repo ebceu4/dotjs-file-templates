@@ -3,6 +3,7 @@ import vscode, { ExtensionContext, Uri, WorkspaceConfiguration, Command } from '
 import { exists, getProjectDir, mkdir, readDir, readFile, rename, unlink, writeFile } from './utils'
 
 export interface Template {
+  type: 'template'
   name: string
   label: string
   code: string
@@ -62,6 +63,7 @@ export const createTemplatesManager = async (context: ExtensionContext): Promise
             const path = dirname(join(templatesDir, name))
             const filename = getFilename(templatesDir, name)
             const t: Template = {
+              type: 'template',
               name,
               label: name,
               code: await readFile(filename, 'utf8'),

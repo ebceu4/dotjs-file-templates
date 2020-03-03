@@ -16,8 +16,8 @@ function log(callback: Function) {
 }
 
 export async function activate(context: ExtensionContext) {
-  const templatesManager = await createTemplatesManager(context)
-  const templatesTreeProvider = await createTemplatesTreeProvider(templatesManager)
+  //const templatesManager = await createTemplatesManager(context)
+  const templatesTreeProvider = await createTemplatesTreeProvider(context)
 
   vscode.window.registerTreeDataProvider('templatesExplorer', templatesTreeProvider)
 

@@ -90,17 +90,17 @@
         },
         {
           "command": "templates.rename",
-          "when": "view == templatesExplorer",
+          "when": "viewItem == template",
           "group": "inline@1"
         },
         {
           "command": "templates.clone",
-          "when": "view == templatesExplorer",
+          "when": "viewItem == template",
           "group": "inline@2"
         },
         {
           "command": "templates.delete",
-          "when": "view == templatesExplorer",
+          "when": "viewItem == template",
           "group": "inline@3"
         }
       ]
