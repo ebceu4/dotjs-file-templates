@@ -1,4 +1,8 @@
-import { readFileSync, readFile } from 'fs'
+import {
+  readFile as fsReadFile,
+  unlink as fsUnlink,
+  rename as fsRename
+} from 'fs'
 import os from 'os'
 import { basename, dirname, extname, join, resolve } from 'path'
 import readdirp, { EntryInfo } from 'readdirp'
@@ -70,23 +74,37 @@ async function multiselectValueCustom(placeHolder: string, items: string[]) {
   return selectedItems.slice(0, -1)
 }
 
-export interface TreeNode {
-  contextValue: 'root' | 'template'
+export interface WorkspaceNode {
+  contextValue: 'workspace'
   label: string
+  isEmpty: boolean
+  isLoading: boolean
 }
 
-export interface RootLevelNode extends TreeNode {
-  contextValue: 'root'
+export interface LoadingNode {
+  contextValue: 'loading'
+  label: string
+  description: string
 }
 
-export interface Template extends TreeNode {
+// export interface NoTemplatesNode {
+//   contextValue: 'notemplates'
+//   label: string
+//   description: string
+// }
+
+export interface Template {
   contextValue: 'template'
+  label: string
   name: string
   code: string
   path: string
   command?: Command
   resourceUri?: Uri
 }
+
+export type TreeNode = WorkspaceNode | LoadingNode | Template
+
 
 export interface TemplatesTreeProvider extends TreeDataProvider<TreeNode> {
   showDialog(uri: Uri): Promise<void>
@@ -99,17 +117,27 @@ export interface TemplatesTreeProvider extends TreeDataProvider<TreeNode> {
   refresh(): Promise<void>
 }
 
-const readTemplate = async (file: EntryInfo): Promise<Template> => {
-  const name = file.basename
-  const code = await new Promise<string>((resolve, reject) =>
-    readFile(file.fullPath, { encoding: 'utf8' }, (err, data) => err ? reject(err) : resolve(data)))
+
+const readFile = (fullPath: string) =>
+  new Promise<string>((resolve, reject) => fsReadFile(fullPath, { encoding: 'utf8' }, (err, data) => err ? reject(err) : resolve(data)))
+
+const renameFile = (oldfullPath: string, newfullPath: string) =>
+  new Promise<void>((resolve, reject) => fsRename(oldfullPath, newfullPath, (err) => err ? reject(err) : resolve()))
+
+const deleteFile = (fullPath: string) =>
+  new Promise<void>((resolve, reject) => fsUnlink(fullPath, (err) => err ? reject(err) : resolve()))
+
+const templateExtension = '.dotjs'
+
+const readTemplate = async ({ basename, fullPath }: { basename: string, fullPath: string }): Promise<Template> => {
+  const code = await readFile(fullPath)
   const t: Template = {
     contextValue: 'template',
-    name,
-    label: name,
+    name: basename.endsWith(templateExtension) ? basename.slice(0, -templateExtension.length) : basename,
+    label: basename,
     code,
-    path: file.path,
-    resourceUri: vscode.Uri.file(file.fullPath),
+    path: fullPath,
+    resourceUri: vscode.Uri.file(fullPath),
   }
   t.command = {
     title: 'Edit',
@@ -119,65 +147,76 @@ const readTemplate = async (file: EntryInfo): Promise<Template> => {
   return t
 }
 
+
 export const createTemplatesTreeProvider = async (context: ExtensionContext): Promise<TemplatesTreeProvider> => {
 
   const onDidChange = new vscode.EventEmitter<TreeNode>()
-  const templates: Record<string, {
-    templates: Template[]
-    needUpdate: boolean
+  const _workspaces: Record<string, {
+    templates: Template[] | undefined
     subscriptions: vscode.Disposable[]
   }> = {}
 
-  const getTemplates = async (workspace: string) => {
-    if (templates[workspace] && !templates[workspace].needUpdate)
-      return templates[workspace].templates
+  const resetWorkspaces = () => Object.values(_workspaces).forEach(w => w.templates = undefined)
 
-
-    if (!templates[workspace]) {
-      templates[workspace] = {
-        templates: [],
-        needUpdate: false,
-        subscriptions: [],
-      }
+  const workspaceNodeChildren = (key: string): Template[] => {
+    const w = _workspaces[key] ? _workspaces[key] : _workspaces[key] = { templates: undefined, subscriptions: [] }
+    if (w && w.templates !== undefined) {
+      return w.templates
     }
 
-    const reads = vscode.workspace.workspaceFolders?.filter(x => x.name === workspace).map(async x => {
-      const path = x.uri.fsPath
-      const files = await readdirp.promise(path, {
-        directoryFilter: d => !d.basename.includes('node_modules')
-          && !d.basename.includes('dist')
-          && !d.basename.includes('build'),
-        fileFilter: '*.dotjs',
-      })
+    return []
+  }
 
-      return { name: x.name, files }
+  const workspaceNode = (key: string): WorkspaceNode => {
 
-    }) || []
+    const w = _workspaces[key] ? _workspaces[key] : _workspaces[key] = { templates: undefined, subscriptions: [] }
+    if (w && w.templates !== undefined) {
+      return { contextValue: 'workspace', label: key, isEmpty: w.templates.length === 0, isLoading: false }
+    }
+
+    const update = () =>
+      Promise.all(vscode.workspace.workspaceFolders?.filter(x => x.name === key).map(async x => {
+        const path = x.uri.fsPath
+        const files = await readdirp.promise(path, {
+          directoryFilter: d => !d.basename.includes('node_modules')
+            && !d.basename.includes('dist')
+            && !d.basename.includes('build'),
+          fileFilter: '*' + templateExtension,
+        })
+
+        return { name: x.name, files }
+
+      }) || []).then(([{ name, files }]) => Promise.all(files.map(readTemplate)).then(templates => ({ name, templates })))
+        .then(({ templates }) => {
+          w.templates = templates
+          onDidChange.fire()
+        })
 
 
-    if (templates[workspace].subscriptions.length === 0) {
-
-      const makeDirty = () => {
-        templates[workspace].needUpdate = true
-        onDidChange.fire()
-      }
-
-      const watcher = vscode.workspace.createFileSystemWatcher('**/*.dotjs')
-
-      templates[workspace].subscriptions = [
-        watcher.onDidCreate(makeDirty),
-        watcher.onDidDelete(makeDirty),
-        watcher.onDidChange(makeDirty),
+    if (w.subscriptions.length === 0) {
+      const watcher = vscode.workspace.createFileSystemWatcher('**/*' + templateExtension)
+      w.subscriptions = [
+        watcher.onDidCreate(x => {
+          readTemplate({ basename: basename(x.fsPath), fullPath: x.fsPath }).then(t => {
+            w.templates?.push(t)
+            onDidChange.fire()
+          })
+        }),
+        watcher.onDidDelete(x => {
+          const index = w.templates?.findIndex((t) => t.path === x.fsPath)
+          if (index !== undefined) {
+            w.templates?.splice(index, 1)
+            onDidChange.fire()
+          }
+        }),
+        watcher.onDidChange(update),
       ]
-      context.subscriptions.push(...(templates[workspace].subscriptions))
+      context.subscriptions.push(...(w.subscriptions))
     }
 
-    const [{ files }] = await Promise.all(reads)
-    await Promise.all(files.map(readTemplate)).then(x => {
-      templates[workspace].templates = x
-    })
+    update()
 
-    return templates[workspace].templates
+    return { contextValue: 'workspace', label: key, isEmpty: true, isLoading: true }
   }
 
   return ({
@@ -185,28 +224,28 @@ export const createTemplatesTreeProvider = async (context: ExtensionContext): Pr
       //templatesManager.onUpdate()
       return onDidChange.event
     },
-    getTreeItem: (element: RootLevelNode | Template) => {
-      if (element.contextValue === 'root')
+    getTreeItem: (element: TreeNode) => {
+      if (element.contextValue === 'workspace')
         return {
           label: element.label,
           contextValue: element.contextValue,
-          collapsibleState: TreeItemCollapsibleState.Collapsed,
+          collapsibleState: element.isEmpty ? TreeItemCollapsibleState.None : TreeItemCollapsibleState.Collapsed,
+          description: element.isLoading ? 'Loading...' : (element.isEmpty ? '(No templates)' : undefined),
         }
 
-      return {
-        label: element.label,
-        contextValue: element.contextValue,
-        collapsibleState: TreeItemCollapsibleState.None,
-      }
+      return element
     },
-    getChildren: (element: TreeNode): ProviderResult<TreeNode[]> => {
-      if (!element)
-        return vscode.workspace.workspaceFolders?.map(({ name }) => ({
-          contextValue: 'root',
-          label: name,
-        })) || []
+    getChildren: (element?: TreeNode): ProviderResult<TreeNode[]> => {
+      if (element === undefined)
+        return vscode.workspace.workspaceFolders?.map(({ name }) => workspaceNode(name)) || []
 
-      return getTemplates(element.label)
+      if (element.contextValue === 'loading')
+        return []
+
+      if (element.contextValue === 'template')
+        return []
+
+      return workspaceNodeChildren(element.label)
     },
     showDialog: async (uri) => {
       const items = [
@@ -352,32 +391,32 @@ export const createTemplatesTreeProvider = async (context: ExtensionContext): Pr
       // }
     },
     edit: async item => {
-      // if (item) {
-      //   const filename = templatesManager.getFilename(item.label)
-      //   if (filename)
-      //     await openFile(filename)
-      // }
+      if (item)
+        await openFile(item.path)
     },
     rename: async item => {
-      const input = await vscode.window.showInputBox({
-        placeHolder: 'New Filename',
-        prompt: `Rename template ${item.label}`,
-        value: item.label,
-      })
-      // if (input && input !== item.label) {
-      //   const isExists = await templatesManager.has(input)
-      //   if (!isExists || (await confirm(`Replace existing template "${item.label}"?`))) {
-      //     await templatesManager.rename(item.label, input)
-      //   }
-      // }
+      if (item) {
+        const result = await vscode.window.showInputBox({
+          placeHolder: 'New Filename',
+          prompt: `Rename template ${item.name}`,
+          value: item.name,
+        })
+
+        if (result) {
+          await renameFile(item.path, join(dirname(item.path), result + templateExtension))
+        }
+      }
     },
     delete: async item => {
-      // if (item) {
-      //   if (await confirm(`Delete template "${item.label}"?`)) {
-      //     await templatesManager.remove(item.label)
-      //   }
-      // }
+      if (item) {
+        if (await confirm(`Delete template "${item.name}"?`)) {
+          await deleteFile(item.path)
+        }
+      }
     },
-    refresh: async () => { },// templatesManager.update,
+    refresh: async () => {
+      resetWorkspaces()
+      onDidChange.fire()
+    },
   })
 }
